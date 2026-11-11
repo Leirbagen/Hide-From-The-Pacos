@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 using TMPro;
 
 public class DeliveryZone : MonoBehaviour
@@ -9,8 +10,8 @@ public class DeliveryZone : MonoBehaviour
     private int tragosEntregados = 0;
     private bool partidaGanada = false;
 
-    public TextMeshProUGUI textoContador; 
-    public GameObject panelVictoria;      
+    public TextMeshProUGUI textoContador;
+    public GameObject panelVictoria;
 
     private void Start()
     {
@@ -23,7 +24,10 @@ public class DeliveryZone : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (partidaGanada) return;
+        if (partidaGanada)
+        {
+            return;
+        }
 
         if (other.CompareTag("Trago"))
         {
@@ -33,15 +37,10 @@ public class DeliveryZone : MonoBehaviour
 
     private void EntregarTrago(GameObject tragoObj)
     {
-        Rigidbody tragoRB = tragoObj.GetComponent<Rigidbody>();
-
-        if (tragoRB != null)
+        HandGrabHandler[] manos = FindObjectsByType<HandGrabHandler>(FindObjectsSortMode.None);
+        foreach (HandGrabHandler mano in manos)
         {
-            HandGrabHandler[] manos = FindObjectsByType<HandGrabHandler>(FindObjectsSortMode.None);
-            foreach (HandGrabHandler mano in manos)
-            {
-                mano.ForzarSoltarSiEs(tragoRB);
-            }
+            mano.SoltarObjeto();
         }
 
         tragosEntregados++;
@@ -59,7 +58,7 @@ public class DeliveryZone : MonoBehaviour
     {
         if (textoContador != null)
         {
-            textoContador.text = $"Tragos en casa: {tragosEntregados} / {tragosParaGanar}";
+            textoContador.text = "Tragos en casa: " + tragosEntregados + " / " + tragosParaGanar;
         }
     }
 
@@ -76,7 +75,8 @@ public class DeliveryZone : MonoBehaviour
         foreach (PacoAI paco in pacos)
         {
             paco.enabled = false;
-            if (paco.TryGetComponent(out UnityEngine.AI.NavMeshAgent agente))
+            NavMeshAgent agente = paco.GetComponent<NavMeshAgent>();
+            if (agente != null)
             {
                 agente.isStopped = true;
             }

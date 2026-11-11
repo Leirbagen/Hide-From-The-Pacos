@@ -10,37 +10,34 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Slider barraCansancio;
     [SerializeField] private GameObject panelGameOver;
 
-    [Header("Configuración de Movimiento")]
+    //movimiento
     [SerializeField] private float walkSpeed = 2f;
     [SerializeField] private float runSpeed = 4f;
     [SerializeField] private float walkForce = 40f;
     [SerializeField] private float runForce = 70f;
-    [SerializeField] private float accelerationSmoothness = 5f;
 
-    [Header("Configuración de Postura (Ragdoll)")]
+    //ragdoll
     [SerializeField] private float standSpringForce = 100f;
     [SerializeField] private float crouchSpringForce = 5f;
     [SerializeField] private float standUpSmoothness = 4f;
 
-    [Header("Configuración de Tropiezo")]
+    //tropiezo
     [SerializeField] private float maxRunTime = 3f;
     [SerializeField] private float tripDuration = 5f;
 
-    private Vector2 moveInputVector = Vector2.zero;
-    private bool isJumpButtonPressed = false;
-    private bool isGrounded = false;
-    private RaycastHit[] raycastHits = new RaycastHit[10];
-
-    private bool isRunning = false;
-    private bool isCrouching = false;
-    private bool isTripped = false;
-    private bool isArrested = false;
+    private Vector2 moveInputVector;
+    private bool isJumpButtonPressed;
+    private bool isGrounded;
+    private bool isRunning;
+    private bool isCrouching;
+    private bool isTripped;
+    private bool isArrested;
 
     private float currentActiveSpeed;
     private float currentActiveForce;
     private float currentSpringForce;
-    private float runTimer = 0f;
-    private float tripTimer = 0f;
+    private float runTimer;
+    private float tripTimer;
 
     private void Start()
     {
@@ -51,18 +48,17 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
+        if (isArrested) return;
+
         moveInputVector.x = Input.GetAxis("Horizontal");
         moveInputVector.y = Input.GetAxis("Vertical");
-        moveInputVector = Vector2.ClampMagnitude(moveInputVector, 1f);
+        moveInputVector = Vector2.ClampMagnitude(moveInputVector, 1f); // Evita que corra más rápido en diagonal
 
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            isJumpButtonPressed = true;
-        }
-
+        if (Input.GetKeyDown(KeyCode.Space)) isJumpButtonPressed = true;
         isRunning = Input.GetKey(KeyCode.LeftShift);
         isCrouching = Input.GetKey(KeyCode.C);
 
+        // verifica si se canso o no
         if (isTripped)
         {
             tripTimer -= Time.deltaTime;
@@ -73,9 +69,11 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            if (isRunning && moveInputVector.magnitude > 0)
+            // si corre y se esta moviendo, que suba el valor y se canse
+            if (isRunning && moveInputVector.magnitude > 0f)
             {
                 runTimer += Time.deltaTime;
+                //si supera el tiempo permitido de correr se cae
                 if (runTimer >= maxRunTime)
                 {
                     isTripped = true;
@@ -85,7 +83,8 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                if (runTimer > 0)
+                // si no que recupere
+                if (runTimer > 0f)
                 {
                     runTimer -= Time.deltaTime;
                 }
@@ -96,12 +95,12 @@ public class PlayerController : MonoBehaviour
         {
             if (isTripped)
             {
-                // Al estar caído, la barra empieza vacía (0) y se llena hasta 1 para levantarse
+                //mientras esta en el suelo, que se vaya llenando de nuevo la barra
                 barraCansancio.value = 1f - (tripTimer / tripDuration);
             }
             else
             {
-                // Empieza llena (1) y se vacía hacia 0 mientras corre
+                // si corre que se disminuya la barra
                 barraCansancio.value = 1f - (runTimer / maxRunTime);
             }
         }
@@ -111,24 +110,16 @@ public class PlayerController : MonoBehaviour
     {
         bool isDown = isCrouching || isTripped || isArrested;
 
-        float targetSpring = isDown ? crouchSpringForce : standSpringForce;
-        float smoothness = isDown ? 15f : standUpSmoothness;
-
-        currentSpringForce = Mathf.Lerp(currentSpringForce, targetSpring, Time.fixedDeltaTime * smoothness);
-
-        JointDrive jointDrive = mainJoint.slerpDrive;
-        jointDrive.positionSpring = currentSpringForce;
-        mainJoint.slerpDrive = jointDrive;
-
-        // Liberar y bloquear ejes para evitar el salto
         if (isDown)
         {
+            currentSpringForce = Mathf.Lerp(currentSpringForce, crouchSpringForce, Time.fixedDeltaTime * 15f);
             mainJoint.angularXMotion = ConfigurableJointMotion.Free;
             mainJoint.angularZMotion = ConfigurableJointMotion.Free;
         }
         else
         {
-            // Solo bloqueamos los ejes cuando el personaje ya se haya levantado casi por completo 
+            currentSpringForce = Mathf.Lerp(currentSpringForce, standSpringForce, Time.fixedDeltaTime * standUpSmoothness);
+
             if (currentSpringForce > standSpringForce * 0.8f)
             {
                 mainJoint.angularXMotion = ConfigurableJointMotion.Locked;
@@ -136,56 +127,50 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        isGrounded = false;
-        int numberOfHits = Physics.SphereCastNonAlloc(rigidBody3D.position, 0.1f, Vector3.down, raycastHits, 0.5f);
+        JointDrive drive = mainJoint.slerpDrive;
+        drive.positionSpring = currentSpringForce;
+        mainJoint.slerpDrive = drive;
 
-        for (int i = 0; i < numberOfHits; i++)
-        {
-            if (raycastHits[i].transform.root == transform) continue;
-            isGrounded = true;
-            break;
-        }
-
+        isGrounded = Physics.Raycast(rigidBody3D.position, Vector3.down, 0.6f);
         if (!isGrounded)
         {
             rigidBody3D.AddForce(Vector3.down * 10f);
         }
 
-        float inputMagnitude = moveInputVector.magnitude;
-
-        if (inputMagnitude > 0)
+        if (moveInputVector.magnitude > 0f && !isArrested)
         {
-            Vector3 decideDirection = new Vector3(moveInputVector.x, 0, -moveInputVector.y);
-            Quaternion targetRotation = Quaternion.LookRotation(decideDirection, Vector3.up);
-            mainJoint.targetRotation = Quaternion.RotateTowards(mainJoint.targetRotation, targetRotation, Time.fixedDeltaTime * 300f);
+            Vector3 direccionMirada = new Vector3(moveInputVector.x, 0f, -moveInputVector.y);
+            Quaternion rotacionMeta = Quaternion.LookRotation(direccionMirada);
+            mainJoint.targetRotation = Quaternion.RotateTowards(mainJoint.targetRotation, rotacionMeta, Time.fixedDeltaTime * 300f);
         }
 
-        float targetMaxSpeed = (isRunning && !isDown) ? runSpeed : walkSpeed;
-        float targetForce = (isRunning && !isDown) ? runForce : walkForce;
+        float targetSpeed = walkSpeed;
+        float targetForce = walkForce;
 
         if (isDown)
         {
-            targetMaxSpeed = 2f;
+            targetSpeed = 2f;
             targetForce = 15f;
         }
-
-        currentActiveSpeed = Mathf.Lerp(currentActiveSpeed, targetMaxSpeed, Time.fixedDeltaTime * accelerationSmoothness);
-        currentActiveForce = Mathf.Lerp(currentActiveForce, targetForce, Time.fixedDeltaTime * accelerationSmoothness);
-
-        Vector3 flatVelocity = new Vector3(rigidBody3D.linearVelocity.x, 0, rigidBody3D.linearVelocity.z);
-
-        if (flatVelocity.magnitude < currentActiveSpeed)
+        else if (isRunning)
         {
-            rigidBody3D.AddForce(transform.forward * inputMagnitude * currentActiveForce);
+            targetSpeed = runSpeed;
+            targetForce = runForce;
         }
 
-        if (isGrounded && isJumpButtonPressed && !isDown)
+        Vector3 velocidadPlana = new Vector3(rigidBody3D.linearVelocity.x, 0f, rigidBody3D.linearVelocity.z);
+
+        if (velocidadPlana.magnitude < targetSpeed)
         {
-            isJumpButtonPressed = false;
-            rigidBody3D.AddForce(Vector3.up * 10f, ForceMode.Impulse);
+            rigidBody3D.AddForce(transform.forward * moveInputVector.magnitude * targetForce);
         }
-        else
+
+        if (isJumpButtonPressed)
         {
+            if (isGrounded && !isDown)
+            {
+                rigidBody3D.AddForce(Vector3.up * 10f, ForceMode.Impulse);
+            }
             isJumpButtonPressed = false;
         }
     }

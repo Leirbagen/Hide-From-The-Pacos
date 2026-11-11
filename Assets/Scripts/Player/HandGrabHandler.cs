@@ -2,116 +2,92 @@ using UnityEngine;
 
 public class HandGrabHandler : MonoBehaviour
 {
-    private Rigidbody rigidBody3D;
-    private FixedJoint fixedJoint;
-    private Transform playerRoot;
-    private Rigidbody playerRootRB; // Referencia al Rigidbody principal para el salto
+    private FixedJoint fixedJoint; // Guarda la unión física cuando agarramos algo
+    private Transform playerRoot;  // Referencia al objeto raíz del jugador
+    private Rigidbody playerRootRB; // Rigidbody principal del cuerpo para impulsarlo al trepar
 
-    [Header("Configuración de Interacción")]
     [SerializeField] private float fuerzaLanzamiento = 15f;
-    [SerializeField] private float fuerzaSaltoTrepar = 8f; // Fuerza aplicada por CADA mano agarrada
+    [SerializeField] private float fuerzaSaltoTrepar = 8f;
 
-    [Header("Animación Física (Alzar Brazo)")]
+    //alzar el brazo
     [SerializeField] private ConfigurableJoint hombroJoint;
     [SerializeField] private Vector3 anguloLevantar = new Vector3(-90f, 0f, 0f);
     [SerializeField] private float velocidadLevantar = 10f;
 
-    private Quaternion rotacionInicial;
-    private Quaternion rotacionObjetivo;
+    private Quaternion rotacionInicial; // Guarda la pose natural del brazo al empezar
 
     private void Start()
     {
-        rigidBody3D = GetComponent<Rigidbody>();
+        // raíz del personaje y su Rigidbody principal
         playerRoot = transform.root;
-        playerRootRB = playerRoot.GetComponent<Rigidbody>(); // Obtenemos el Rigidbody central
-        rigidBody3D.solverIterations = 255;
+        playerRootRB = playerRoot.GetComponent<Rigidbody>();
 
+        // precision para que los objetos que se agarren o de lo que este agarrado no tiemble. 
+        GetComponent<Rigidbody>().solverIterations = 255;
+
+        //rotación original del hombro para saber cómo bajar el brazo luego
         if (hombroJoint != null)
         {
             rotacionInicial = hombroJoint.targetRotation;
-            rotacionObjetivo = rotacionInicial;
         }
     }
 
     private void Update()
     {
-        // 1. ANIMACIÓN FÍSICA
+        // calcula el ángulo levantado, si no vuelve al inicial
         if (hombroJoint != null)
         {
+            Quaternion meta = rotacionInicial;
+
             if (Input.GetMouseButton(1))
             {
-                rotacionObjetivo = rotacionInicial * Quaternion.Euler(anguloLevantar);
+                meta = rotacionInicial * Quaternion.Euler(anguloLevantar);
             }
-            else
-            {
-                rotacionObjetivo = rotacionInicial;
-            }
-            hombroJoint.targetRotation = Quaternion.Slerp(hombroJoint.targetRotation, rotacionObjetivo, Time.deltaTime * velocidadLevantar);
+
+            hombroJoint.targetRotation = Quaternion.Slerp(hombroJoint.targetRotation, meta, Time.deltaTime * velocidadLevantar);
         }
 
-        // 2. LÓGICA DE AGARRE Y LANZAMIENTO
-        if (Input.GetMouseButtonUp(1) && fixedJoint != null)
+        if (fixedJoint == null) return;
+
+        if (Input.GetMouseButtonUp(1))
         {
             SoltarObjeto();
         }
-
-        if (Input.GetMouseButtonDown(0) && fixedJoint != null)
+        else if (Input.GetMouseButtonDown(0))
         {
-            LanzarObjeto();
+            Rigidbody objetoAgarrado = fixedJoint.connectedBody; 
+            SoltarObjeto(); 
+
+            if (objetoAgarrado != null)
+            {
+                Vector3 direccion = (playerRoot.forward + Vector3.up * 0.5f).normalized;
+                objetoAgarrado.AddForce(direccion * fuerzaLanzamiento, ForceMode.Impulse);
+            }
         }
-
-        // 3. LÓGICA DE TREPAR (Salto mientras se agarra)
-        if (Input.GetKeyDown(KeyCode.Space) && fixedJoint != null)
+        else if (Input.GetKeyDown(KeyCode.Space))
         {
-            // Impulsa el centro del personaje hacia arriba
             playerRootRB.AddForce(Vector3.up * fuerzaSaltoTrepar, ForceMode.Impulse);
         }
     }
 
     private void OnCollisionStay(Collision collision)
     {
-        if (Input.GetMouseButton(1) && fixedJoint == null)
+        if (Input.GetMouseButton(1) && fixedJoint == null && collision.transform.root != playerRoot)
         {
-            if (collision.transform.root == playerRoot) return;
-
             if (collision.collider.TryGetComponent(out Rigidbody otroRB))
             {
-                AgarrarObjeto(otroRB, collision.GetContact(0).point);
+                fixedJoint = gameObject.AddComponent<FixedJoint>();
+                fixedJoint.connectedBody = otroRB; 
             }
         }
     }
 
-    private void AgarrarObjeto(Rigidbody objetivoRB, Vector3 puntoDeContacto)
+    public void SoltarObjeto()
     {
-        fixedJoint = gameObject.AddComponent<FixedJoint>();
-        fixedJoint.connectedBody = objetivoRB;
-        fixedJoint.autoConfigureConnectedAnchor = false;
-        fixedJoint.connectedAnchor = objetivoRB.transform.InverseTransformPoint(puntoDeContacto);
-    }
-
-    private void SoltarObjeto()
-    {
-        Destroy(fixedJoint);
-        fixedJoint = null;
-    }
-
-    private void LanzarObjeto()
-    {
-        Rigidbody objetivoRB = fixedJoint.connectedBody;
-        SoltarObjeto();
-
-        if (objetivoRB != null)
+        if (fixedJoint != null)
         {
-            Vector3 direccionLanzamiento = playerRoot.forward + (Vector3.up * 0.5f);
-            objetivoRB.AddForce(direccionLanzamiento.normalized * fuerzaLanzamiento, ForceMode.Impulse);
-        }
-    }
-
-    public void ForzarSoltarSiEs(Rigidbody objetivo)
-    {
-        if (fixedJoint != null && fixedJoint.connectedBody == objetivo)
-        {
-            SoltarObjeto();
+            Destroy(fixedJoint); 
+            fixedJoint = null;   
         }
     }
 }
