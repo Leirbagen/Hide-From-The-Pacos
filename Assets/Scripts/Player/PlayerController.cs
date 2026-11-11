@@ -6,8 +6,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Rigidbody rigidBody3D;
     [SerializeField] private ConfigurableJoint mainJoint;
 
-    [Header("Interfaz de Usuario (UI)")]
+    [Header("UI")]
     [SerializeField] private Slider barraCansancio;
+    [SerializeField] private GameObject panelGameOver;
 
     [Header("Configuración de Movimiento")]
     [SerializeField] private float walkSpeed = 2f;
@@ -33,6 +34,7 @@ public class PlayerController : MonoBehaviour
     private bool isRunning = false;
     private bool isCrouching = false;
     private bool isTripped = false;
+    private bool isArrested = false;
 
     private float currentActiveSpeed;
     private float currentActiveForce;
@@ -61,7 +63,6 @@ public class PlayerController : MonoBehaviour
         isRunning = Input.GetKey(KeyCode.LeftShift);
         isCrouching = Input.GetKey(KeyCode.C);
 
-        // LÓGICA DE TROPIEZO Y CANSANCIO
         if (isTripped)
         {
             tripTimer -= Time.deltaTime;
@@ -91,7 +92,6 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // ACTUALIZACIÓN VISUAL DE LA BARRA (Invertida como Energía)
         if (barraCansancio != null)
         {
             if (isTripped)
@@ -109,9 +109,8 @@ public class PlayerController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        bool isDown = isCrouching || isTripped;
+        bool isDown = isCrouching || isTripped || isArrested;
 
-        // 1. LÓGICA DE POSTURA
         float targetSpring = isDown ? crouchSpringForce : standSpringForce;
         float smoothness = isDown ? 15f : standUpSmoothness;
 
@@ -129,7 +128,7 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            // Solo bloqueamos los ejes cuando el personaje ya se haya levantado casi por completo (80% de la fuerza)
+            // Solo bloqueamos los ejes cuando el personaje ya se haya levantado casi por completo 
             if (currentSpringForce > standSpringForce * 0.8f)
             {
                 mainJoint.angularXMotion = ConfigurableJointMotion.Locked;
@@ -137,7 +136,6 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // Comprobación de suelo
         isGrounded = false;
         int numberOfHits = Physics.SphereCastNonAlloc(rigidBody3D.position, 0.1f, Vector3.down, raycastHits, 0.5f);
 
@@ -153,7 +151,6 @@ public class PlayerController : MonoBehaviour
             rigidBody3D.AddForce(Vector3.down * 10f);
         }
 
-        // 2. LÓGICA DE MOVIMIENTO Y ROTACIÓN
         float inputMagnitude = moveInputVector.magnitude;
 
         if (inputMagnitude > 0)
@@ -182,7 +179,6 @@ public class PlayerController : MonoBehaviour
             rigidBody3D.AddForce(transform.forward * inputMagnitude * currentActiveForce);
         }
 
-        // 3. LÓGICA DE SALTO
         if (isGrounded && isJumpButtonPressed && !isDown)
         {
             isJumpButtonPressed = false;
@@ -191,6 +187,21 @@ public class PlayerController : MonoBehaviour
         else
         {
             isJumpButtonPressed = false;
+        }
+    }
+
+    public void ArrestarJugador()
+    {
+        if (isArrested) return;
+        isArrested = true;
+        isRunning = false;
+        moveInputVector = Vector2.zero;
+
+        if (panelGameOver != null)
+        {
+            panelGameOver.SetActive(true);
+            Cursor.lockState = CursorLockMode.None; 
+            Cursor.visible = true;                  
         }
     }
 }

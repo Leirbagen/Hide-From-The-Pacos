@@ -106,4 +106,12 @@ public class HandGrabHandler : MonoBehaviour
             objetivoRB.AddForce(direccionLanzamiento.normalized * fuerzaLanzamiento, ForceMode.Impulse);
         }
     }
+
+    public void ForzarSoltarSiEs(Rigidbody objetivo)
+    {
+        if (fixedJoint != null && fixedJoint.connectedBody == objetivo)
+        {
+            SoltarObjeto();
+        }
+    }
 }
